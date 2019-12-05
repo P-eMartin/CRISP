@@ -1,2 +1,2 @@
-# crisp
-ComputeR vIsion for Sport Performance 
+# CRISP
+## ComputeR vIsion for Sport Performance 
