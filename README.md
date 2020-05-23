@@ -24,3 +24,5 @@ Our network take as input the optical flow computed from the rgb images and the 
 
 
 ### coming soon...
+
+We are waiting for the authorization of the University and all the tutelles to share the code. Due to the COVID19 situation, this process has been delayed. Once we have the green light, the code will be available.
