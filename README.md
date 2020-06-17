@@ -8,6 +8,7 @@ The goal of this repository is to allow research team, PhD students, master stud
 ``
 Pierre-Etienne Martin, Jenny  Benois-Pineau, Renaud  Péteri, and Julien Morlier.  Fine grained sport action recognition with twin spatio-temporal convolutional neural networks. Multimedia Tools and Applications, Apr 2020.
 ``
+
 [bib source](PeMTAP20.bib)
 
 and/or
@@ -15,6 +16,7 @@ and/or
 ``
 Pierre-Etienne Martin, Jenny Benois-Pineau, Renaud Péteri, and Julien Morlier. Optimal choice of motion estimation methods  for fine-grained action classification with 3d convolutional networks. In ICIP 2019, pages 554–558. IEEE, 2019.
 ``
+
 [bib source](PeICIP19.bib)
 
 
