@@ -3,7 +3,23 @@
 
 The goal of the project is to increase sportsmen performances by using Digital technologies. Sportsmen actions are recorded in an ecological situation of their exercises and games.
 The first targeted sport is Table Tennis. The goal of automtic analysis is to index video recordings by recognising table tennis strokes in them. An ecological corpus is being recorded by students of Sport Faculty of University of Bordeaux, teachers and table tennis players. The corpus is annotated by experts via crowd-sourced interface. The methodology of action recognition is based on specifically designed Deep Learning architecture and motion analysis. A Fine-grain characterization of actions is then foreseen to optimize performances of sportsmen.
-The goal of this repository is to allow research team, PhD students, master students... to be able to reproduce our work, method in the aim to compare our method with theirs or enriched ours. The code is lighter for better understanding. If you use our code, please cite our work:
+The goal of this repository is to allow research team, PhD students, master students... to be able to reproduce our work, method in the aim to compare our method with theirs or enriched ours. The code is lighter for better understanding.
+
+This work is under the [Creative Commons Attribution 4.0 International license - CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), meaning:
+
+"
+You are free to:
+
+    Share — copy and redistribute the material in any medium or format
+    Adapt — remix, transform, and build upon the material
+    for any purpose, even commercially. 
+    
+Under the following terms:
+
+    Attribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made. You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.
+"
+
+ If you use this work, please cite it:
 
 ``
 Pierre-Etienne Martin, Jenny  Benois-Pineau, Renaud  Péteri, and Julien Morlier.  Fine grained sport action recognition with twin spatio-temporal convolutional neural networks. Multimedia Tools and Applications, Apr 2020.
