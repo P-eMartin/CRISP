@@ -35,7 +35,7 @@ Pierre-Etienne Martin, Jenny Benois-Pineau, Renaud Péteri, and Julien Morlier. 
 ## TTStroke-21
 
 The dataset has been annotated using 20 stroke classes and a rejection class.
-The dataset contains private data and is available through MediaEval workshop where we organize the [Sport task](https://multimediaeval.github.io/editions/2020/) based on TTStroke-21. To have access to the data, particular conditions need to be accepted. We are working on sharing this dataset while respecting the General Data Protection Regulation (EU GDPR).
+The dataset contains private data and is available through [MediaEval workshop](https://multimediaeval.github.io/) where we organize the [Sport task](https://multimediaeval.github.io/editions/2020/) based on TTStroke-21. To have access to the data, particular conditions need to be accepted. We are working on sharing this dataset while respecting the General Data Protection Regulation (EU GDPR).
 
 # Method
 ## Twin Spatio-Temporal Concvolutional Neural Network (TSTCNN)
