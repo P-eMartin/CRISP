@@ -622,6 +622,11 @@ def train_model(model, args, train_loader, validation_loader):
 
 ```
 
+
+## 3D Attention Mechanism
+
+Waiting for acceptation of our work before publishing the code. (Should be soon)
+
 ## More ?
 
 This should be a good start if you want to train your own models with PyTorch. Of course, you need to implement your onw functions according to your problematic. This code is generic enough and I believe straigh forward enough to be modified and adapted. You can contact me if you meet some difficulties of if you have some correction to make to what it is written so far. Soon we will had supplmentary materials.
