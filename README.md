@@ -17,7 +17,7 @@ This work is under the [Creative Commons Attribution 4.0 International license -
  If you use this work, please cite it:
 
 ``
-Pierre-Etienne Martin, Jenny  Benois-Pineau, Renaud  Péteri, and Julien Morlier.  Fine grained sport action recognition with twin spatio-temporal convolutional neural networks. Multimedia Tools and Applications, Apr 2020.
+Pierre-Etienne Martin, Jenny Benois-Pineau, Renaud Péteri, and Julien Morlier.  Fine grained sport action recognition with twin spatio-temporal convolutional neural networks. Multimedia Tools and Applications, Apr 2020.
 ``
 
 [bib source](PeMTAP20.bib)
@@ -25,11 +25,18 @@ Pierre-Etienne Martin, Jenny  Benois-Pineau, Renaud  Péteri, and Julien Morlier
 and/or
 
 ``
-Pierre-Etienne Martin, Jenny Benois-Pineau, Renaud Péteri, and Julien Morlier. Optimal choice of motion estimation methods  for fine-grained action classification with 3d convolutional networks. In ICIP 2019, pages 554–558. IEEE, 2019.
+Pierre-Etienne Martin, Jenny Benois-Pineau, Renaud Péteri, and Julien Morlier. Optimal choice of motion estimation methods for fine-grained action classification with 3d convolutional networks. In ICIP 2019, pages 554–558. IEEE, 2019.
 ``
 
 [bib source](PeICIP19.bib)
 
+and/or
+
+``
+Pierre-Etienne Martin, Jenny Benois-Pineau, Renaud Péteri, and Julien Morlier. 3D attention mechanisms in Twin Spatio-Temporal Convolutional Neural Networks. Application to  action classification in videos of table tennis games. In 25th International Conference on Pattern Recognition (ICPR2020) - MiCo Milano Congress Center, Italy, 10-15 January 2021.
+``
+
+[bib source](PeICPR20.bib)
 
 # Dataset
 ## TTStroke-21
