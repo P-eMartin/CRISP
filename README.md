@@ -625,9 +625,188 @@ def train_model(model, args, train_loader, validation_loader):
 
 ## 3D Attention Mechanism
 
-Waiting for acceptation of our work before publishing the code. (Should be soon)
+In this section we provide the code of the attnetion block that we present in "3D attention mechanisms in Twin Spatio-Temporal Convolutional Neural Networks. Application to  action classification in videos of table tennis games.", accepted at ICPR2020. Those blocks can be added to any 3D-CNNs. I modified the implement BatchNorm3d to make it do what I wanted (normalization per channel according to all its values in one sample; otherwise it is done per dimension). Results lead to better performances and faster convergence. Be aware that training parameters might need to be updated.
+
+```python
+##########################################################################
+############# Batch Normalization 1D for ND tensors  #####################
+##########################################################################
+class MyBatchNorm(_BatchNorm): ## Replace nn.BatchNorm3d
+    def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True):
+        super(MyBatchNorm, self).__init__(num_features, eps, momentum, affine, track_running_stats)
+
+    def _check_input_dim(self, input):
+        self.saved_shape = input.shape
+        if input.dim() != 2 and input.dim() != 3:
+            return input.reshape((input.shape[0], input.shape[1], input[0,0].numel()))
+
+    def forward(self, input):
+        input = self._check_input_dim(input)
+        # exponential_average_factor is set to self.momentum
+        # (when it is available) only so that if gets updated
+        # in ONNX graph when this node is exported to ONNX.
+        if self.momentum is None:
+            exponential_average_factor = 0.0
+        else:
+            exponential_average_factor = self.momentum
+
+        if self.training and self.track_running_stats:
+            # TODO: if statement only here to tell the jit to skip emitting this when it is None
+            if self.num_batches_tracked is not None:
+                self.num_batches_tracked = self.num_batches_tracked + 1
+                if self.momentum is None:  # use cumulative moving average
+                    exponential_average_factor = 1.0 / float(self.num_batches_tracked)
+                else:  # use exponential moving average
+                    exponential_average_factor = self.momentum
+
+        output = F.batch_norm(input, self.running_mean, self.running_var, self.weight, self.bias,
+                              self.training or not self.track_running_stats, exponential_average_factor, self.eps)
+
+        output = output.reshape(self.saved_shape)
+
+        return output
+
+
+###################################################################
+####################### 3D Attention Model  #######################
+###################################################################
+class ResidualBlock3D(nn.Module):
+    def __init__(self, in_dim, out_dim, stride=1):
+        super(ResidualBlock3D, self).__init__()
+
+        dim_conv = math.ceil(out_dim/4)
+
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.stride = stride
+        self.bn1 = MyBatchNorm(in_dim)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv1 = nn.Conv3d(in_dim, dim_conv, 1, 1, bias = False)
+        self.bn2 = MyBatchNorm(dim_conv)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv3d(dim_conv, dim_conv, 3, stride, padding = 1, bias = False)
+        self.bn3 = MyBatchNorm(dim_conv)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv3 = nn.Conv3d(dim_conv, out_dim, 1, 1, bias = False)
+        if (self.in_dim != self.out_dim) or (self.stride !=1 ):
+            self.conv4 = nn.Conv3d(in_dim, out_dim , 1, stride, bias = False)
+
+        ## Use GPU
+        if param.cuda:
+            self.cuda()
+
+    def forward(self, input):
+        residual = input
+        out = self.bn1(input)
+        out1 = self.relu(out)
+        out = self.conv1(out1)
+        out = self.bn2(out)
+        out = self.relu(out)
+        out = self.conv2(out)
+        out = self.bn3(out)
+        out = self.relu(out)
+        out = self.conv3(out)
+        if (self.in_dim != self.out_dim) or (self.stride !=1 ):
+            residual = self.conv4(out1)
+        out += residual
+        return out
+
+
+class AttentionModule3D(nn.Module):
+    def __init__(self, in_dim, out_dim, size1, size2, size3):
+        super(AttentionModule3D, self).__init__()
+
+        self.size1 = tuple(size1.astype(int))
+        self.size2 = tuple(size2.astype(int))
+        self.size3 = tuple(size3.astype(int))
+
+        self.first_residual_blocks = ResidualBlock3D(in_dim, out_dim)
+
+        self.trunk_branches = nn.Sequential(
+        	ResidualBlock3D(in_dim, out_dim),
+        	ResidualBlock3D(in_dim, out_dim)
+        )
+
+        self.pool1 = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
+
+        self.block1 = ResidualBlock3D(in_dim, out_dim)
+
+        self.skip1 = ResidualBlock3D(in_dim, out_dim)
+
+        self.pool2 = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
+
+        self.block2 = ResidualBlock3D(in_dim, out_dim)
+
+        self.skip2 = ResidualBlock3D(in_dim, out_dim)
+
+        self.pool3 = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
+
+        self.block3 = nn.Sequential(
+        	ResidualBlock3D(in_dim, out_dim),
+        	ResidualBlock3D(in_dim, out_dim)
+        )
+
+        self.block4 = ResidualBlock3D(in_dim, out_dim)
+
+        self.block5 = ResidualBlock3D(in_dim, out_dim)
+
+        self.block6 = nn.Sequential(
+        	MyBatchNorm(out_dim),
+        	nn.ReLU(inplace=True),
+        	nn.Conv3d(out_dim, out_dim , kernel_size = 1, stride = 1, bias = False),
+        	MyBatchNorm(out_dim),
+        	nn.ReLU(inplace=True),
+        	nn.Conv3d(out_dim, out_dim , kernel_size = 1, stride = 1, bias = False),
+        	nn.Sigmoid()
+        )
+
+        self.final = ResidualBlock3D(in_dim, out_dim)
+
+        ## Use GPU
+        if param.cuda:
+            self.cuda()
+
+
+    def forward(self, input):
+        input = self.first_residual_blocks(input)
+        out_trunk = self.trunk_branches(input)
+
+        # 1st level
+        out_pool1 =  self.pool1(input)
+        out_block1 = self.block1(out_pool1)
+        out_skip1 = self.skip1(out_block1)
+
+        #2sd level
+        out_pool2 = self.pool2(out_block1)
+        out_block2 = self.block2(out_pool2)
+        out_skip2 = self.skip2(out_block2)
+
+        # 3rd level
+        out_pool3 = self.pool3(out_block2)
+        out_block3 = self.block3(out_pool3)
+        out_interp3 = F.interpolate(out_block3, size=self.size3, mode='trilinear', align_corners=True)
+        out = out_interp3 + out_skip2
+
+        #4th level
+        out_softmax4 = self.block4(out)
+        out_interp2 = F.interpolate(out_softmax4, size=self.size2, mode='trilinear', align_corners=True)
+        out = out_interp2 + out_skip1
+
+        #5th level
+        out_block5 = self.block5(out)
+        out_interp1 = F.interpolate(out_block5, size=self.size1, mode='trilinear', align_corners=True)
+
+        #6th level
+        out_block6 = self.block6(out_interp1)
+        out = (1 + out_block6) * out_trunk
+
+        # Final with Attention added
+        out_last = self.final(out)
+
+        return out_last
+```
 
 ## More ?
 
-This should be a good start if you want to train your own models with PyTorch. Of course, you need to implement your onw functions according to your problematic. This code is generic enough and I believe straigh forward enough to be modified and adapted. You can contact me if you meet some difficulties of if you have some correction to make to what it is written so far. Soon we will had supplmentary materials.
+This should be a good start if you want to train your own models with PyTorch. Of course, you need to implement your onw functions according to your problematic. This code is generic enough and I believe straigh forward enough to be modified and adapted. You can contact me if you meet some difficulties of if you have some correction to make to what it is written so far.
 
