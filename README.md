@@ -488,6 +488,341 @@ def make_the_model(video_list):
     test_model(model, args, test_loader, param.list_of_moves)
 ```
 
+### Get the Data, Normalization and Augmentation
+
+Here I provide an example of how to get the data and how to augment them. It is higly dependant on how you saved the data, prepared them, compute. This portion is provided so it can help you in the process of data feeding, normalization and augmentation. In addition, here, the pose is also processed. The get_data function might be called by a Dataset type class which will be used by a dataloader during train, validation and test phases.
+
+```python
+###############################################################################
+########################### Flow Normalization ################################
+###############################################################################
+# Get Normalization value #
+def compute_normalization_values(path_data, list_videos):
+    maxs_x = []
+    maxs_y = []
+    min_value = 5
+
+    for video_name in list_videos:
+        maxs_x_, means_x_, stds_x_, maxs_y_, means_y_, stds_y_ = np.array(list(zip(*np.load(os.path.join(path_data, video_name, 'flow_values_mask.npy')))))
+        maxs_x.extend(maxs_x_)
+        maxs_y.extend(maxs_y_)
+    global mean_x, std_x, mean_y, std_y
+    maxs_x = np.array(maxs_x)
+    maxs_y = np.array(maxs_y)
+    mean_x = maxs_x[maxs_x>min_value].mean()
+    std_x = maxs_x[maxs_x>min_value].std()
+
+    mean_y = maxs_y[maxs_y>min_value].mean()
+    std_y = maxs_y[maxs_y>min_value].std()
+    print('Normalization value:\n \t mean_x: %.2f +- %.2f \n \t mean_y %.2f +- %.2f' %(mean_x, std_x, mean_y, std_y))
+
+def normalize_optical_flow(flow):
+    global mean_x, std_x, mean_y, std_y
+    # Normal Normalization
+    flow_normed = np.dstack((flow[:,:,0] / (mean_x + 3*std_x),
+                                flow[:,:,1] / (mean_y + 3*std_y)))
+    flow_normed[flow_normed > 1] = 1
+    flow_normed[flow_normed < -1] = -1
+
+    return flow_normed
+
+def process_coordinates_pose(coord, zoom, R_matrix, flip, width, height, tx, ty, pose_norm_method='image_size'):
+    # y, x
+    v = [coord[0],coord[1],1]
+
+    # # Grab  the rotation components of the matrix)
+    # cos = np.abs(R_matrix[0, 0])
+    # sin = np.abs(R_matrix[0, 1])
+    # # compute the new bounding dimensions of the image
+    # nW = int((height * sin) + (width * cos))
+    # nH = int((height * cos) + (width * sin))
+    # # adjust the rotation matrix to take into account translation
+    # R_matrix_coord = R_matrix.copy()
+    # R_matrix_coord[0, 2] += (nW / 2) - cx
+    # R_matrix_coord[1, 2] += (nH / 2) - cy
+
+    # Rotation of the coordinates
+    # v = np.dot(R_matrix_coord, v)
+    if R_matrix is not None:
+        v = np.dot(R_matrix, v)
+
+    new_coord = [zoom*(v[1]+tx), zoom*(v[0]+ty)]
+
+    if flip:
+        new_coord[0] = zoom*width - new_coord[0]
+
+    if pose_norm_method=='image_size':
+        new_coord = [new_coord[0]/(width*zoom), new_coord[1]/(height*zoom)]
+
+    return new_coord
+
+###############################################################################
+################################# Get data ####################################
+###############################################################################
+def get_data(annotation, size_data, augmentation=0, path_to_save=None, pose_norm_method='image_size', model_type='TwinPose'):
+    # Variables
+    rgb_data = []
+    flow_data = []
+    pose_data = []
+
+    crop_Flow = os.path.join(annotation.video_name, 'roi_mask.npy')
+    path_RGB = os.path.join(annotation.video_name, 'rgb')
+    path_Mask = os.path.join(annotation.video_name, 'mask')
+    path_Pose = os.path.join(annotation.video_name, 'pose')
+    Pose_parts = ['nose', 'leftEye', 'rightEye', 'leftEar', 'rightEar', 'leftShoulder', 'rightShoulder', 'leftElbow', 'rightElbow', 'leftWrist', 'rightWrist', 'leftHip', 'rightHip']
+    path_Flow = os.path.join(annotation.video_name, 'flow')
+    x_list, y_list = np.asarray(np.load(crop_Flow)).astype(float)
+
+    rgb_example = cv2.imread(os.path.join(path_RGB, '%08d.png' % 0))
+    shape = rgb_example.shape
+
+    if path_to_save is not None:
+        # count = len([f for f in os.listdir(path_to_save) if os.path.isfile(os.path.join(path_to_save, f))])/4
+        path_to_save = os.path.join(path_to_save, '%04d' % len(os.listdir(path_to_save)))
+        make_path(os.path.join(path_to_save))
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+
+    # Smoothing of the crop center
+    x_list = cv2.GaussianBlur(x_list, (1, int(2 * 1./6 *  120 + 1)), 0)
+    y_list = cv2.GaussianBlur(y_list, (1, int(2 * 1./6 *  120 + 1)), 0)
+    
+    # Random transformations parameters and begin of the interval according to the window
+    if augmentation:
+        angle, zoom, tx, ty, flip, begin = get_augmentation_parameters(annotation, size_data)
+        angle_radian = math.radians(angle)
+    else:
+        tx = 0
+        ty = 0
+        flip = False
+        zoom = 1
+        angle = 0
+        begin = (annotation.begin + annotation.end + 1 - size_data[0]) // 2
+
+    begin = max(begin, 0)
+    for frame_number in range(begin, begin + size_data[0]):
+
+        x_seg = x_list[frame_number - 1][0]
+        y_seg = y_list[frame_number - 1][0]
+
+        if augmentation:
+            # Rotation Matrix
+            R_matrix = cv2.getRotationMatrix2D((x_seg, y_seg), angle, 1)
+        else:
+            R_matrix = None
+
+        #################
+        ###### Pose #####
+        #################
+        if 'Pose' in model_type:
+            pose = []
+            pose_list = np.load(os.path.join(path_Pose, '%08d.npy' % (frame_number)))
+
+            # Take the best pose according to our ROI
+            if len(pose_list)==0:
+                pose_dict = None
+            elif len(pose_list)==1:
+                pose_dict = pose_list[0]
+            elif len(pose_list) > 1:
+                dist = []
+                for pose_dict in pose_list:
+                    score, coord = pose_dict['Scrore pose']
+                    dist.append(sum(abs(coord-np.array([y_seg,x_seg]))))
+                pose_dict = pose_list[np.array(dist).argmin()]
+
+            # For each part of the body, keep coordinates and score (default is our ROI)
+            if pose_dict is not None:
+
+                score, coord = pose_dict['Scrore pose']
+                coord_norm = process_coordinates_pose(coord, zoom, R_matrix, flip, 320, 180, tx, ty, pose_norm_method=pose_norm_method)
+                pose.extend([coord_norm[0],coord_norm[1],score])
+
+                for Pose_part in Pose_parts:
+                    if flip:
+                        if Pose_part[:4] == 'left':
+                            score, coord = pose_dict['right'+Pose_part[4:]]
+                        elif Pose_part[:5] == 'right':
+                            score, coord = pose_dict['left'+Pose_part[5:]]
+                        else:
+                            score, coord = pose_dict[Pose_part]
+                    else:
+                        score, coord = pose_dict[Pose_part]
+                    pose.extend([coord_norm[0],coord_norm[1],score])
+
+            else:
+                coord_norm = process_coordinates_pose((x_seg, y_seg), zoom, R_matrix, flip, 320, 180, tx, ty, pose_norm_method=pose_norm_method)
+                for i in range(len(Pose_parts)+1):
+                    pose.extend([coord_norm[0],coord_norm[1],0])
+
+            pose_data.append(pose)
+
+
+        # Update coordinates
+        if flip:
+            x_seg = shape[1] - x_seg
+
+        # Coordinates correction to fit in the image
+        x_seg, y_seg = correction_coordinates(zoom * (x_seg + tx), zoom * (y_seg + ty), size_data[1:], shape)
+        x_seg = int(x_seg - size_data[2] * 0.5)
+        y_seg = int(y_seg - size_data[1] * 0.5)
+
+        #################
+        ###### Flow #####
+        #################
+        if ('Flow' in model_type) or ('Twin' in model_type):
+            try:
+                flow = np.load(os.path.join(path_Flow, '%08d.npy' % frame_number))
+            except:
+                raise ValueError('Problem with %s begin %d inter %d-%d step %d T %d' % (os.path.join(path_Flow, '%08d.npy' % frame_number), begin, annotation.begin, annotation.end, step, size_data[0]))
+            
+            flow = cv2.GaussianBlur(flow, (3,3), 0)
+            mask = cv2.imread(os.path.join(path_Mask, '%08d.png' % frame_number),cv2.IMREAD_GRAYSCALE) / 255
+            mask = cv2.dilate(mask, kernel)
+            flow = np.multiply(flow, np.dstack((mask, mask)))
+            flow = normalize_optical_flow(flow)
+
+            if augmentation:
+                flow = apply_augmentation(flow, zoom, R_matrix, angle_radian, flip, flow_values=True)
+            
+            flow_croped = flow[y_seg : y_seg + size_data[1], x_seg : x_seg + size_data[2]]
+            flow_data.append(flow_croped)
+
+        #################
+        ###### RGB ######
+        #################
+        if ('RGB' in model_type) or ('Twin' in model_type):
+            try:
+                rgb = cv2.imread(os.path.join(path_RGB, '%08d.png' % frame_number)).astype(float) / 255
+            except:
+                raise ValueError('Problem with %s begin %d inter %d-%d step %d T %d' % (os.path.join(path_RGB, '%08d.png' % frame_number), begin, annotation.begin, annotation.end, step, size_data[0]))
+
+            if augmentation:
+                rgb = apply_augmentation(rgb, zoom, R_matrix, angle_radian, flip, flow_values=False)
+
+            rgb_croped = rgb[y_seg : y_seg + size_data[1], x_seg : x_seg + size_data[2]]
+            rgb_data.append(cv2.split(rgb_croped))
+
+
+    label = args.list_of_moves.index(annotation.move)
+
+    if 'Pose' in model_type:
+        pose_data = np.transpose(np.array(pose_data), (1, 0))
+
+    if ('RGB' in model_type) or ('Twin' in model_type):
+        rgb_data = np.transpose(rgb_data, (1, 0, 2, 3))
+    
+    if ('Flow' in model_type) or ('Twin' in model_type):
+        flow_data = np.transpose(flow_data, (3, 0, 1, 2))
+    
+    return rgb_data, flow_data, pose_data, label
+
+def correction_coordinates(x, y, size, shape):
+    diff = x - size[1] * 0.5
+    if diff < 0: x = size[1] * 0.5
+
+    diff = x + size[1] * 0.5 - shape[1]
+    if diff > 0: x = shape[1] - size[1] * 0.5
+
+    diff = y - size[0] * 0.5
+    if diff < 0: y = size[0] * 0.5
+
+    diff = y + size[0] * 0.5 - shape[0]
+    if diff > 0: y = shape[0] - size[0] * 0.5
+    return int(x), int(y)
+
+############################ Augmentation ####################################
+def get_augmentation_parameters(annotation, size_data, step=1):
+    angle = (random.random()* 2 - 1) * 10
+    zoom = 1 + (random.random()* 2 - 1) * 0.1
+
+    tx = random.randint(-0.1 * size_data[2], 0.1 * size_data[2])
+    ty = random.randint(-0.1 * size_data[1], 0.1 * size_data[1])
+
+    flip = random.randint(0,1)
+
+
+    # Normal distribution to pick whre to begin #
+    mu = annotation.begin + (annotation.end + 1 - annotation.begin - step*size_data[0])/2
+    sigma = (annotation.end + 1 - annotation.begin - step*size_data[0])/6
+    begin = -1
+
+    if sigma <= 0:
+        begin = max(int(mu),0)
+    else:
+        count=0
+        while not annotation.begin <= begin <= annotation.end + 1 - step*size_data[0]:
+            begin = int(np.random.normal(mu, sigma))
+            count+=1
+            if count>10:
+                print('Warning: augmentation with picking frame has a problem')
+
+    return angle, zoom, tx, ty, flip, begin
+
+
+def apply_augmentation(data, zoom, R_matrix, angle_radian, flip, flow_values=False):
+    if data is not None:
+        # Resize and Rotation
+        shape = data.shape
+        data = cv2.resize(cv2.warpAffine(data, R_matrix, (shape[1], shape[0])), (0,0), fx = zoom, fy = zoom)
+        if flow_values:
+            data *= zoom
+
+            # Update Flow values according to rotation
+            tmp = cv2.addWeighted(data[:,:,0], math.cos(angle_radian), data[:,:,1], -math.sin(angle_radian), 0)
+            data[:,:,1] = cv2.addWeighted(data[:,:,0], math.sin(angle_radian), data[:,:,1], math.cos(angle_radian), 0)
+            data[:,:,0] = tmp
+
+        # Flip
+        if flip:
+            data = cv2.flip(data, 1)
+            if flow_values:
+                data = -data
+    return data
+
+####################################################################
+######################### Dataset Class ############################
+####################################################################
+class My_dataset(Dataset):
+    def __init__(self, dataset_list, size_data, augmentation=0, model_type='TwinPose'):
+        self.dataset_list = dataset_list
+        self.size_data = size_data
+        self.augmentation = augmentation
+        self.model_type = model_type
+
+    def __len__(self):
+        return len(self.dataset_list)
+
+    def __getitem__(self, idx):
+        rgb, flow, pose, label = get_data(self.dataset_list[idx], self.size_data, self.augmentation, model_type = self.model_type)
+        sample = {'rgb': torch.FloatTensor(rgb), 'flow' : torch.FloatTensor(flow), 'pose' : torch.FloatTensor(pose), 'label' : label, 'my_stroke' : {'video_name':self.dataset_list[idx].video_name, 'begin':self.dataset_list[idx].begin, 'end':self.dataset_list[idx].end}}
+        return sample
+
+class My_test_dataset(Dataset):
+    def __init__(self, interval, size_data, augmentation=0, model_type='TwinPose'):
+        self.interval = interval
+        middle = (interval.begin + interval.end + 1 - size_data[2]) // 2
+        n = max(0,(middle - interval.begin))
+        self.begin = middle - n
+        self.number_of_iteration = n * 2 + 1
+        self.size_data = size_data
+        self.augmentation = augmentation
+        self.model_type = model_type
+
+    def __len__(self):
+        return self.number_of_iteration
+
+    def __getitem__(self, idx):
+        begin = self.begin + idx
+        windowed_interval = MyStroke(self.interval.video_name, begin, begin + self.size_data[2], self.interval.move)
+        rgb, flow, pose, label = get_data(windowed_interval, self.size_data, self.augmentation, model_type = self.model_type)
+        sample = {'rgb': torch.FloatTensor(rgb), 'flow' : torch.FloatTensor(flow), 'pose' : torch.FloatTensor(pose), 'label': label, 'my_stroke' : {'video_name':self.interval.video_name, 'begin':self.interval.begin, 'end':self.interval.end}}
+        return sample
+
+    def my_print(self, show_option=1):
+        self.interval.my_print()
+        # save_my_dataset(self.annotation, augmentation = self.augmentation, show_option = show_option)
+```
+
 ### Training Process
 
 During training, we can save and load model. We keep a checkpoint when we perform the best to be able to retrain from this point. We load the data using the dataloader.
