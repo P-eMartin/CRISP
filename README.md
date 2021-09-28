@@ -259,7 +259,7 @@ class NetTwin(nn.Module):
         self.linear = nn.Bilinear(500, 500, n_classes)
         self.final = nn.Softmax(1)
 
-    def forward(self, rgb, flowe):
+    def forward(self, rgb, flow):
 
         ####################
         ####### First ######
